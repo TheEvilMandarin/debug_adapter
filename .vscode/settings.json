@@ -1,0 +1,21 @@
+{
+    "[python]": {
+      "editor.formatOnSave": true,
+      "editor.codeActionsOnSave": {
+        "source.fixAll": "always",
+        "source.organizeImports": "always"
+      },
+      "editor.defaultFormatter": "charliermarsh.ruff"
+    },
+    "ruff.lint.args": [
+      "--extend-select", "D1" // Activate missing docstring rules
+    ],
+    "ruff.format.args": ["--config", "${workspaceFolder}/pyproject.toml"],
+    "mypy-type-checker.importStrategy": "fromEnvironment",
+    "mypy-type-checker.args": [
+        "--config-file",  "${workspaceFolder}/pyproject.toml"
+    ],
+    "cSpell.words": [
+      "secretindex"
+    ],
+  }

@@ -1,0 +1,5 @@
+[flake8]
+exclude = .git,__pycache__,.venv,node_modules
+max-line-length = 100
+max-local-variables = 10
+extend-ignore = D104,D100,D400,E203,Q000,WPS421,WPS110,WPS211,DAR101,DAR201,WPS214,WPS305,WPS229,DAR301
