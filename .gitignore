@@ -1,0 +1,21 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+dist
+
+# Distribution / packaging
+build/
+dist/
+
+# Virtualenvs
+*venv*
+*virtualenv*
+.python-version
+
+# Cspell
+node_modules/
+package-lock.json
+package.json
+
+# Secrets
+.env*
