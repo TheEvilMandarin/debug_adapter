@@ -16,6 +16,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--program",
         type=str,
+        default = "",
         help="Path to the program to debug",
     )
     args = parser.parse_args()

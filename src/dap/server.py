@@ -24,7 +24,7 @@ class DAPServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(1)
-        print(f"DAP server is listening on {self.host}:{self.port}")
+        print(f"DAP server is listening on {self.host}:{self.port}", flush=True)
 
         client_conn, client_address = self.server_socket.accept()
         self.client_conn = client_conn
