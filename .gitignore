@@ -6,6 +6,7 @@ dist
 # Distribution / packaging
 build/
 dist/
+.vendor
 
 # Virtualenvs
 *venv*

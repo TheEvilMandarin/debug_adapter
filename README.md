@@ -58,3 +58,7 @@ All checks are launched with the command:
 ```bash
 poetry run poe check
 ```
+
+## VSCode Extension
+
+A [client for VSCode](https://github.com/TheEvilMandarin/debug_adapter_ext) was written for the debug adapter. The entry point is a script located in `./bin/run_debug_adapter`.
