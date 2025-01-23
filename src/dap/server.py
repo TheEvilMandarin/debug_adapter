@@ -78,7 +78,7 @@ class DAPServer:
         header = f"Content-Length: {content_length}\r\n\r\n"
         if self.client_conn:
             self.client_conn.sendall((header + response_str).encode())
-            print(f"Sent response: {response}")
+            print(f"Sent response: {response}", flush=True)
 
     def _send_error_response(self, message: str, code: int):
         """

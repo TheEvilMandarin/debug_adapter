@@ -18,4 +18,4 @@ ADAPTER_PATH="${PROJECT_DIR}/src/main.py"
 
 export PYTHONPATH="$VENDOR_DIR:$PYTHONPATH"
 
-"$PYTHON_PATH" "$ADAPTER_PATH" --gdbPath "$GDB_PATH" --program "$PROGRAM_PATH"
+"$PYTHON_PATH" "$ADAPTER_PATH" --gdb-path "$GDB_PATH" --program "$PROGRAM_PATH"

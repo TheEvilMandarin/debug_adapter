@@ -67,7 +67,7 @@ lines-after-imports = 2
 files = ["src/**/*.py"]
 
 [tool.bandit]
-exclude_dirs = ["test", ".venv", "node_modules"]
+exclude_dirs = ["test", ".venv", "node_modules", ".vendor"]
 
 [tool.pytest.ini_options]
 pythonpath = "."
