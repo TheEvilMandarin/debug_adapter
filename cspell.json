@@ -7,6 +7,7 @@
     "words": [
         "gdbcontroller",
         "gdbmi",
+        "gdbserver",
         "pygdbmi",
         "solib"
     ],

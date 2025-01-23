@@ -8,7 +8,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Debug Adapter")
     parser.add_argument(
-        "--gdbPath",
+        "--gdb-path",
         type=str,
         default="/usr/bin/gdb",
         help="Path to the GDB executable",
@@ -16,19 +16,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--program",
         type=str,
-        default = "",
+        default="",
         help="Path to the program to debug",
     )
     args = parser.parse_args()
 
     print(
-        f"Starting Debug Adapter with GDB Path: {args.gdbPath} and Program: {args.program}",
+        f"Starting Debug Adapter with GDB Path: {args.gdb_path} and Program: {args.program}",
     )
 
     HOST = "127.0.0.1"
     PORT = 4711
 
-    gdb_backend = GDBBackend(gdb_path=args.gdbPath)
+    gdb_backend = GDBBackend(gdb_path=args.gdb_path)
     request_handler = DAPRequestHandler(gdb_backend=gdb_backend)
     server = DAPServer(host=HOST, port=PORT, request_handler=request_handler)
 

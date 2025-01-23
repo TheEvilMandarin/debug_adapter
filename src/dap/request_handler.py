@@ -51,7 +51,7 @@ class DAPRequestHandler:
         :return: JSON response for client.
         """
         command = request.get("command")
-        print(f"Handling DAP command: {command}")
+        print(f"Handling DAP command: {request}", flush=True)
 
         if command in self._commands:
             yield from self._commands.get(command, self._unsupported_command)(request)
@@ -89,13 +89,36 @@ class DAPRequestHandler:
         event = DAPEvent(event="initialize")
         yield event.to_dict()
 
+    def _set_custom_settings(self, request: dict) -> tuple[bool, str]:
+        success = True
+        message = ""
+        setup_commands = request[ARGUMENTS].get("setupCommands", [])
+        send_cmd = self.gdb_backend.send_command_and_check_for_success
+        for command in setup_commands:
+            command_text = command.get("text")
+
+            if command_text:
+                ignore_failures = command.get("ignoreFailures", False)
+                success, message = send_cmd(command_text, ignore_failures)
+                if not success:
+                    return success, message
+
+        gdb_server_address = request[ARGUMENTS].get("gdbServer")
+        if gdb_server_address:
+            success, message = self.gdb_backend.connect_to_gdbserver(gdb_server_address)
+        return success, message
+
     @register_command("attach")
     def _attach(self, request: dict) -> Iterator[dict]:
         """Process the command `attach`."""
-        pid = request[ARGUMENTS].get("pid")
-        print(f"Attaching to process with PID: {pid}")
+        success, message = self._set_custom_settings(request)
 
-        success, message = self.gdb_backend.attach_to_process(pid)
+        if success:
+            pid = request[ARGUMENTS].get("pid")
+            print(f"Attaching to process with PID: {pid}")
+
+            program_path = request[ARGUMENTS].get("program")
+            success, message = self.gdb_backend.attach_to_process(pid, program_path)
 
         response = DAPResponse(
             request=request,
