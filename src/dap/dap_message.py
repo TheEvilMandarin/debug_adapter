@@ -1,3 +1,13 @@
+"""
+Module for generating responses and events in the Debug Adapter Protocol (DAP).
+
+This module provides classes for creating standardized responses and events
+that adhere to the Debug Adapter Protocol (DAP) specification. These classes
+are used to communicate between the debug adapter and the client (e.g., an IDE
+like VS Code) during a debugging session.
+"""
+
+
 class DAPResponse:
     """
     A unified class for generating DAP responses.
