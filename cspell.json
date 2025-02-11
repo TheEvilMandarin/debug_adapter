@@ -5,9 +5,13 @@
     "language": "en,ru",
     // words - list of words to be always considered correct
     "words": [
+        "bkptno",
+        "displayhint",
         "gdbcontroller",
         "gdbmi",
         "gdbserver",
+        "numchild",
+        "osabi",
         "pygdbmi",
         "solib"
     ],
