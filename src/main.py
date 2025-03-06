@@ -1,3 +1,5 @@
+"""Entry point for the Debug Adapter Protocol (DAP) server."""
+
 import argparse
 
 from dap.request_handler import DAPRequestHandler
@@ -5,7 +7,6 @@ from dap.server import DAPServer
 from gdb.backend import GDBBackend
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(description="Debug Adapter")
     parser.add_argument(
         "--gdb-path",

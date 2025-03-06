@@ -1,7 +1,21 @@
+"""
+DAPServer module: Server implementation for the Debug Adapter Protocol (DAP).
+
+This module provides the server-side implementation of the Debug Adapter Protocol (DAP),
+which facilitates communication between a DAP client (e.g., an IDE) and a debugger backend.
+The server listens for incoming client connections, processes DAP requests, and sends
+appropriate responses back to the client.
+
+The `DAPServer` class is the core component of this module. It handles socket communication,
+request processing, and response generation. It also integrates with the `DAPRequestHandler`
+to delegate request handling and uses the `DAPNotifier` to send events to the client.
+"""
+
 import json
 import socket
 from collections.abc import Iterator
 
+from dap.notifier import DAPNotifier
 from dap.request_handler import DAPRequestHandler
 
 JSON_DECODE_ERROR = -32700
@@ -13,24 +27,28 @@ class DAPServer:
 
     def __init__(self, host: str, port: int, request_handler: DAPRequestHandler):
         """Server initialization."""
-        self.host = host
-        self.port = port
-        self.request_handler = request_handler
-        self.server_socket = None
+        self._host = host
+        self._port = port
+        self._request_handler = request_handler
+        self._server_socket = None
         self.client_conn = None
+        self._notifier = None
 
     def start(self):
         """Start the server and waits for the client to connect."""
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(1)
-        print(f"DAP server is listening on {self.host}:{self.port}", flush=True)
+        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._server_socket.bind((self._host, self._port))
+        self._server_socket.listen(1)
+        print(f"DAP server is listening on {self._host}:{self._port}", flush=True)
 
-        client_conn, client_address = self.server_socket.accept()
+        client_conn, client_address = self._server_socket.accept()
         self.client_conn = client_conn
         self.client_address = client_address
 
         print(f"Client connected: {client_address}")
+
+        self.notifier = DAPNotifier(self)
+        self._request_handler.notifier = self.notifier
 
     def handle_requests(self):
         """Process client requests and sends responses."""
@@ -39,13 +57,13 @@ class DAPServer:
             if request is None:
                 break
 
-            for response in self.request_handler.handle_request(request):
+            for response in self._request_handler.handle_request(request):
                 self._send_response(response)
 
     def stop(self):
         """Stop the server."""
-        if self.server_socket:
-            self.server_socket.close()
+        if self._server_socket:
+            self._server_socket.close()
             print("Server stopped.")  # TODO: change print to logging for filtering
 
     def _process_request(self, request_body: bytes):
@@ -58,7 +76,7 @@ class DAPServer:
             request = json.loads(request_body.decode())
             print(f"Received request: {request}")
 
-            response = self.request_handler.handle_request(request)
+            response = self._request_handler.handle_request(request)
             if response:
                 self._send_response(response)
 
