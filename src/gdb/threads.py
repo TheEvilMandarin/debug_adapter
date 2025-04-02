@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from gdb.backend import GDBBackend
 
-from gdb.gdb_utils import is_gdb_response_successful
+from gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
 class ThreadManager:
@@ -38,7 +38,7 @@ class ThreadManager:
         """Return a list of threads managed by GDB."""
         responses = self.backend.send_command_and_get_result("-thread-info")
 
-        success, error_message = is_gdb_response_successful(responses)
+        success, error_message = is_gdb_responses_successful_with_message(responses)
         threads = self._extract_threads(responses) if success else []
         return success, error_message, threads
 

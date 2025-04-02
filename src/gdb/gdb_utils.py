@@ -3,7 +3,7 @@
 from common import CommandResult
 
 
-def is_gdb_response_successful(responses: list[dict]) -> CommandResult:
+def is_gdb_responses_successful_with_message(responses: list[dict]) -> CommandResult:
     """
     Parse GDB responses for errors.
 
@@ -17,3 +17,14 @@ def is_gdb_response_successful(responses: list[dict]) -> CommandResult:
             return CommandResult(success, f"Error from GDB: {error_message}")
     success = True
     return CommandResult(success, "")
+
+
+def is_success_response(resp: dict) -> bool:
+    """
+    Check if a GDB response indicates successful command execution.
+
+    :param resp: Single response dictionary from GDB
+    :return: True if the response indicates success (type=result and message=done),
+             False otherwise
+    """
+    return resp.get("type") == "result" and resp.get("message") == "done"

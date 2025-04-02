@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from gdb.backend import GDBBackend
 
-from gdb.gdb_utils import is_gdb_response_successful
+from gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
 # TODO: ignore (or do something else) with system files.
@@ -43,7 +43,7 @@ class StackTraceManager:
             return False, "No response from GDB", []
 
         stack_frames = self._parse_stack_frames(responses)
-        success, message = is_gdb_response_successful(responses)
+        success, message = is_gdb_responses_successful_with_message(responses)
         return success, message, stack_frames
 
     def _parse_stack_frames(self, responses: list[dict]) -> list[dict]:
