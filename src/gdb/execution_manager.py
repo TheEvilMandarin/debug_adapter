@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from common import CommandResult
     from gdb.backend import GDBBackend
 
-from gdb.gdb_utils import is_gdb_response_successful
+from gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
 class ExecutionManager:
@@ -84,16 +84,16 @@ class ExecutionManager:
 
         return self.backend.send_command_and_check_for_success("-exec-next")
 
-    def pause_execution(self, thread_id: int | None) -> CommandResult:
+    def pause_execution(self, thread_id: int | None = None) -> CommandResult:
         """Pause program execution."""
         if thread_id:
             self.backend.send_command_and_get_result(f"-thread-select {thread_id}")
         responses = self.backend.send_command_and_get_result("-exec-interrupt")
 
-        return is_gdb_response_successful(responses)
+        return is_gdb_responses_successful_with_message(responses)
 
-    def continue_execution(self, thread_id: int | None) -> CommandResult:
+    def continue_execution(self, thread_id: int | None = None) -> CommandResult:
         """Continue program execution."""
         command = f"-exec-continue --thread {thread_id}" if thread_id else "-exec-continue"
         responses = self.backend.send_command_and_get_result(command)
-        return is_gdb_response_successful(responses)
+        return is_gdb_responses_successful_with_message(responses)

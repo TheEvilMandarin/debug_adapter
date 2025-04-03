@@ -135,7 +135,7 @@ class DAPRequestHandler:
 
         gdb_server_address = self._get_argument(request, "gdbServer")
         if gdb_server_address:
-            return self.gdb_backend.connect_to_gdbserver(gdb_server_address)
+            return self.gdb_backend.process_manager.connect_to_gdbserver(gdb_server_address)
         return CommandResult(success=True, message="")
 
     @register_command("attach")
@@ -148,7 +148,7 @@ class DAPRequestHandler:
             print(f"Attaching to process with PID: {pid}")
 
             program_path = self._get_argument(request, "program")
-            success, message = self.gdb_backend.attach_to_process(pid, program_path)
+            success, message = self.gdb_backend.process_manager.attach_to_process(pid, program_path)
 
         response = DAPResponse(
             request=request,
@@ -167,6 +167,128 @@ class DAPRequestHandler:
                 all_threads_stopped=True,
                 hit_breakpoint_ids=[],
             )
+
+    @register_command("listProcesses")
+    def _list_processes(self, request: dict) -> Iterator[dict]:
+        """Process the command `listProcesses`."""
+        success, message, processes = self.gdb_backend.process_manager.get_processes()
+        current_pid = self.gdb_backend.process_manager.get_current_pid()
+
+        response = {
+            "type": "response",
+            "request_seq": request.get("seq", 0),
+            "command": "listProcesses",
+            "success": success,
+            "message": message,
+            "body": {"processes": processes, "currentProcess": current_pid},
+        }
+        yield response
+
+    @register_command("addInferiors")
+    def _add_inferiors(self, request: dict) -> Iterator[dict]:
+        """Process the command `addInferiors`."""
+        pids = self._get_argument(request, "pids", [])
+        if self.notifier:
+            # When adding inferiors, gdb briefly starts and stops the program being debugged.
+            # The client does not need to know about this
+            self.notifier.stop_notifier()
+            self.gdb_backend.process_manager.add_inferior_with_pids(pids)
+            self.notifier.start_notifier()
+        else:
+            self.gdb_backend.process_manager.add_inferior_with_pids(pids)
+
+        response = {
+            "type": "response",
+            "request_seq": request.get("seq", 0),
+            "command": "addInferiors",
+            "success": True,
+            "message": "",
+            "body": {},
+        }
+        yield response
+
+    @register_command("detachInferiors")
+    def _detach_inferiors(self, request: dict):
+        """Process the command `detachInferiors`."""
+        pids = self._get_argument(request, "pids", [])
+        self.gdb_backend.process_manager.detach_inferiors_with_pids(pids)
+        current_pid = self.gdb_backend.process_manager.get_current_pid()
+
+        if self.notifier:
+            # Send events to update the client's state
+            self.notifier.send_continued_event(thread_id="1", all_threads_continued=True)
+            self.notifier.send_stopped_event(
+                reason="detach inferior",
+                thread_id=1,
+                all_threads_stopped=True,
+                hit_breakpoint_ids=[],
+            )
+
+        response = {
+            "type": "response",
+            "request_seq": request.get("seq", 0),
+            "command": "detachInferiors",
+            "success": True,
+            "message": "",
+            "body": {"processes": current_pid, "newCurrentPid": current_pid},
+        }
+
+        yield response
+
+    @register_command("selectInferior")
+    def _select_inferior(self, request: dict):
+        """Process the command `selectInferior`."""
+        pid = self._get_argument(request, "pid")
+
+        success = self.gdb_backend.process_manager.select_inferior_by_pid(pid)
+
+        response = {
+            "type": "response",
+            "request_seq": request.get("seq", 0),
+            "command": "selectInferior",
+            "success": success,
+            "message": "Switched to inferior"
+            if success
+            else f"Failed to switch to inferior for PID {pid}",
+            "body": {},
+        }
+
+        yield response
+
+    @register_command("evaluate")
+    def _evaluate(self, request: dict):
+        """Process the command `evaluate`."""
+        expression = self._get_argument(request, "expression", "")
+
+        responses = self.gdb_backend.send_command_and_get_result(expression)
+
+        response = {
+            "type": "response",
+            "request_seq": request.get("seq", 0),
+            "command": "evaluate",
+            "success": True,
+            "body": {"result": responses},
+        }
+
+        yield response
+
+    @register_command("continueAfterProcessExit")
+    def _continue_after_process_exit(self, request: dict):
+        continue_debugging = False
+        if self.gdb_backend.process_manager.get_inferiors_list():
+            continue_debugging = True
+            self.gdb_backend.process_manager.get_current_inferior()
+            # Refresh gdb and client state
+            self.gdb_backend.execution_manager.continue_execution()
+            self.gdb_backend.execution_manager.pause_execution()
+        response = DAPResponse(
+            request=request,
+            command="continueAfterProcessExit",
+            body={
+                "continue": continue_debugging,
+            },
+        )
+        yield response.to_dict()
 
     @register_command("threads")
     def _threads(self, request: dict) -> Iterator[dict]:
@@ -319,10 +441,10 @@ class DAPRequestHandler:
         }
 
         scopes = []
-        if self.gdb_backend.variable_manager.get_local_variable_names():
+        if self.gdb_backend.variable_manager.check_for_local_variables():
             scopes.append(locals_scope)
 
-        if self.gdb_backend.variable_manager.get_registers_names():
+        if self.gdb_backend.variable_manager.check_for_registers():
             scopes.append(registers_scope)
 
         response.success = True
