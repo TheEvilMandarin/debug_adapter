@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from gdb.backend import GDBBackend
 
-from gdb.gdb_utils import is_gdb_response_successful
+from gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
 # TODO: ignore (or do something else) with system files.
@@ -43,7 +43,7 @@ class StackTraceManager:
             return False, "No response from GDB", []
 
         stack_frames = self._parse_stack_frames(responses)
-        success, message = is_gdb_response_successful(responses)
+        success, message = is_gdb_responses_successful_with_message(responses)
         return success, message, stack_frames
 
     def _parse_stack_frames(self, responses: list[dict]) -> list[dict]:
@@ -60,7 +60,7 @@ class StackTraceManager:
                 return [self._parse_frame(frame_info) for frame_info in gdb_stack]
         return []
 
-    # TODO: Replace function name "??" for something more obvious, add arguments in parentheses
+    # TODO: make vscode detect jit code
     def _parse_frame(self, frame_info: dict) -> dict:
         """
         Parse a single frame from GDB response.
@@ -71,18 +71,32 @@ class StackTraceManager:
         level = self._safe_int(frame_info.get("level"))
         line = self._safe_int(frame_info.get("line", "0"))
 
+        file_name = frame_info.get("file", "<unknown>")
+        fullname = frame_info.get("fullname", "")
+        func_name = frame_info.get("func", "<unknown>")
+
+        if fullname:
+            source = {
+                "name": file_name,
+                "path": fullname,
+            }
+            pres_hint = "normal"
+        else:
+            source = {
+                "name": file_name,
+            }
+            pres_hint = "subtle"  # Hint for UI that the frame is synthetic/special
+
         return {
             "id": level,
-            "name": frame_info.get("func", "<unknown>"),
-            "source": {
-                "name": frame_info.get("file", "<unknown>"),
-                "path": frame_info.get("fullname", ""),
-            },
+            "name": func_name,
+            "source": source,
             "line": line,
             "column": 0,  # GDB does not provide columns, the default is 0
             "addr": frame_info.get("addr", ""),
             "arch": frame_info.get("arch", ""),
             "from": frame_info.get("from", ""),
+            "presentationHint": pres_hint,
         }
 
     def _safe_int(self, value: str | None) -> int:

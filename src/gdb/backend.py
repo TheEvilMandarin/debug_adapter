@@ -2,7 +2,6 @@
 
 import threading
 import time
-from pathlib import Path
 from queue import Empty, Queue
 from typing import Any
 
@@ -12,7 +11,8 @@ from common import CommandResult
 from dap.notifier import DAPNotifier
 from gdb.breakpoints import BreakpointManager
 from gdb.execution_manager import ExecutionManager
-from gdb.gdb_utils import is_gdb_response_successful
+from gdb.gdb_utils import is_gdb_responses_successful_with_message
+from gdb.processes import ProcessManager
 from gdb.stack_trace import StackTraceManager
 from gdb.threads import ThreadManager
 from gdb.variables import VariableManager
@@ -42,6 +42,7 @@ class GDBBackend:
         self.variable_manager = VariableManager(self)
         self.thread_manager = ThreadManager(self)
         self.execution_manager = ExecutionManager(self)
+        self.process_manager = ProcessManager(self)
 
     def start(self):
         """Start GDB and performs basic setup."""
@@ -50,7 +51,7 @@ class GDBBackend:
         )
         self._start_monitoring()
         self._send_initial_commands()
-        self._send_shared_gdb_gdbserver_settings()
+        self.send_shared_gdb_gdbserver_settings()
 
     def stop(self):
         """Stop GDB and terminates the process."""
@@ -126,6 +127,9 @@ class GDBBackend:
                 if breakpoint_number:
                     hit_breakpoints.append(int(breakpoint_number))
 
+            if "exited" in stop_reason:
+                self.notifier.send_exited_process_event()
+                return
             self.notifier.send_stopped_event(
                 reason=stop_reason,
                 thread_id=thread_id,
@@ -134,7 +138,7 @@ class GDBBackend:
             )
 
     def _handle_continue_event(self, response: dict):
-        """Handle GDB stopping and sends a `continue` event to the DAP."""
+        """Handle the continuation of program execution and send the `continue` event to the DAP."""
         if self.notifier:
             payload = response.get("payload", {})
             thread_id = payload.get("thread-id", "")
@@ -291,139 +295,9 @@ class GDBBackend:
         responses = self.send_command_and_get_result(command)
 
         if not ignore_failures:
-            return is_gdb_response_successful(responses)
+            return is_gdb_responses_successful_with_message(responses)
         success = True
         return CommandResult(success, "")
-
-    def attach_to_process(self, pid: int, program_path: str = "") -> CommandResult:
-        """
-        Connect to a process by its PID.
-
-        It first checks whether the process is already managed by GDB using
-        `-list-thread-groups`. If the process is not found, it issues the `attach` command.
-        After attaching, it verifies that the process is correctly registered in GDB
-        and removes any unused inferiors if necessary. Finally, it attempts to load
-        symbols from the provided `program_path`.
-        """
-        # Retrieve the list of current thread groups (inferiors) from GDB
-        responses = self.send_command_and_get_result("-list-thread-groups")
-        # Attempt to find the target inferior
-        target_inferior, groups = self._find_target_inferior_and_groups(responses, pid)
-
-        # If the target process is not already managed by GDB, attach to it
-        if not target_inferior:
-            success, message = self.send_command_and_check_for_success(f"attach {pid}")
-            if not success:
-                return CommandResult(success, f"Failed to attach to PID {pid}: {message}")
-
-        # Refresh the list of thread groups after the attach operation
-        responses = self.send_command_and_get_result("-list-thread-groups")
-        # Verify that the attached process is now recognized by GDB and remove any unused inferiors
-        success, message = self.check_pid_in_inferiors_and_remove_unused(responses, pid)
-        if not success:
-            return CommandResult(success, f"Failed to attach to PID {pid}: {message}")
-        # Load debugging symbols for the target program
-        return self.load_program_symbols(program_path)
-
-    def check_pid_in_inferiors_and_remove_unused(
-        self,
-        responses: list[dict],
-        attached_pid: int,
-    ) -> tuple[bool, str]:
-        """
-        Process GDB responses to manage inferiors.
-
-        This function parses GDB's response to check whether the attached PID is
-        listed among the inferiors. If it is found, it ensures that the correct
-        inferior is active and detaches any other unnecessary inferiors.
-        """
-        if not responses:
-            return False, "No response from GDB"
-
-        for response in responses:
-            if response.get("type") == "result" and response.get("message") == "done":
-                groups = response.get("payload", {}).get("groups", [])
-
-                # Identify the target inferior associated with the attached PID
-                target_inferior = self._find_target_inferior(groups, attached_pid)
-                if not target_inferior:
-                    return False, f"No inferior found for PID {attached_pid}"
-
-                # Switch to the target inferior and detach unnecessary ones
-                return self._switch_to_inferior(target_inferior, groups)
-
-        return False, "No valid response found"
-
-    def _find_target_inferior(self, groups: list[dict], attached_pid: int) -> str | None:
-        """Find the inferior ID corresponding to the given PID."""
-        for group in groups:
-            pid_int = self._extract_pid(group)
-            if pid_int == attached_pid:
-                return group.get("id")
-        return None
-
-    def _extract_pid(self, group: dict) -> int | None:
-        """Extract and converts the PID to int if possible."""
-        if group.get("type") != "process":
-            return None
-
-        pid = group.get("pid")
-        if pid is None:
-            return None
-        try:
-            return int(pid)
-        except ValueError:
-            return None
-
-    def _switch_to_inferior(self, target_inferior: str, groups: list[dict]) -> tuple[bool, str]:
-        """Switch to the correct inferior and detach others."""
-        inferior_number = target_inferior.lstrip("i")
-        if not self._execute_inferior_switch(inferior_number):
-            return False, f"Failed to switch to inferior {inferior_number}"
-
-        return self._detach_other_inferiors(target_inferior, groups)
-
-    def _execute_inferior_switch(self, inferior_number: str) -> bool:
-        """Execute the inferior switch command."""
-        switch_responses = self.send_command_and_get_result(f"inferior {inferior_number}")
-        success, _ = is_gdb_response_successful(switch_responses)
-        return success
-
-    def _detach_other_inferiors(self, target_inferior: str, groups: list[dict]) -> tuple[bool, str]:
-        """Detach all inferiors except the target."""
-        for group in groups:
-            inferior_id = group.get("id")
-            if inferior_id is None or inferior_id == target_inferior:
-                continue
-
-            inferior_number = inferior_id.lstrip("i")
-            detach_command = f"detach inferior {inferior_number}"
-            detach_responses = self.send_command_and_get_result(detach_command)
-            success, message = is_gdb_response_successful(detach_responses)
-
-            if not success:
-                return False, f"Failed to detach inferior {inferior_id}: {message}"
-
-        return True, ""
-
-    def _find_target_inferior_and_groups(
-        self,
-        responses: list[dict],
-        pid: int,
-    ) -> tuple[str | None, list[dict]]:
-        """
-        Extract the target inferior ID for the specified PID.
-
-        Parses GDB's response to locate the inferior ID associated with the given PID.
-        If found, it returns both the inferior ID and the list of all inferiors.
-        """
-        for response in responses:
-            if response.get("type") == "result" and response.get("message") == "done":
-                groups = response.get("payload", {}).get("groups", [])
-                target_inferior = self._find_target_inferior(groups, pid)
-                return target_inferior, groups
-
-        return None, []
 
     def select_frame(self, frame_id: str) -> CommandResult:
         """Select a specific stack frame in the debugging session."""
@@ -439,7 +313,8 @@ class GDBBackend:
         print("GDB initialized and configured.", flush=True)
 
     # TODO: Make it user configurable
-    def _send_shared_gdb_gdbserver_settings(self):
+    def send_shared_gdb_gdbserver_settings(self):
+        """Set common settings for gdb and gdb server"""
         self.send_command_and_get_result("set osabi auto")
         self.send_command_and_get_result("set follow-fork-mode parent")
         self.send_command_and_get_result("set follow-exec-mode same")
@@ -451,26 +326,3 @@ class GDBBackend:
         # but the command is harmless, we simply ignore it if there is no effect.
         self.send_command_and_get_result("set scheduler-locking off")
         self.send_command_and_get_result("set schedule-multiple on")
-
-    def connect_to_gdbserver(self, gdb_server_address: str) -> CommandResult:
-        """
-        Connect to gdbserver at a given address.
-
-        :param gdb_server_address: gdbserver address.
-        """
-        command = f"target extended-remote {gdb_server_address}"
-        responses = self.send_command_and_get_result(command)
-        success, message = is_gdb_response_successful(responses)
-        if success:
-            self._send_shared_gdb_gdbserver_settings()
-        self.send_command_and_get_result("detach")
-        return CommandResult(success, message)
-
-    def load_program_symbols(self, program_path: str):
-        """Load the program symbols into the debugger."""
-        if program_path:
-            if not Path(program_path).exists():
-                return False, f"The path {program_path} does not exist"
-            command = f"file {program_path}"
-            self.send_command_and_get_result(command)
-        return True, ""

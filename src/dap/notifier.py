@@ -115,10 +115,15 @@ class DAPNotifier:
         )
         self.send_event(event.to_dict())
 
+    def send_exited_process_event(self):
+        """Create and dispatches the 'exited' event."""
+        event = DAPEvent(event="exitedProcess")
+        self.send_event(event.to_dict())
+
     def stop_notifier(self):
-        """Activate the notifier to allow sending events to the client."""
+        """Deactivate the notifier to prevent sending events to the client."""
         self.notifier_is_active = False
 
     def start_notifier(self):
-        """Deactivate the notifier to prevent sending events to the client."""
+        """Activate the notifier to allow sending events to the client."""
         self.notifier_is_active = True

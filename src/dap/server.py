@@ -11,9 +11,12 @@ request processing, and response generation. It also integrates with the `DAPReq
 to delegate request handling and uses the `DAPNotifier` to send events to the client.
 """
 
+import atexit
 import json
 import socket
+import tempfile
 from collections.abc import Iterator
+from pathlib import Path
 
 from dap.notifier import DAPNotifier
 from dap.request_handler import DAPRequestHandler
@@ -25,65 +28,57 @@ INTERNAL_JSON_RPC_ERROR = -32603
 class DAPServer:
     """Class for processing client requests via Debug Adapter Protocol (DAP)."""
 
-    def __init__(self, host: str, port: int, request_handler: DAPRequestHandler):
+    def __init__(self, request_handler: DAPRequestHandler):
         """Server initialization."""
-        self._host = host
-        self._port = port
         self._request_handler = request_handler
         self._server_socket = None
         self.client_conn = None
-        self._notifier = None
+        self.notifier = None
+        self._temp_dir = tempfile.TemporaryDirectory()
+        self._socket_path = str(Path(self._temp_dir.name) / "dap_socket")
+        self._buffer = b""
+        atexit.register(self.stop)
+
+    @property
+    def socket_path(self) -> str:
+        """Path to the Unix domain socket used by the server."""
+        return self._socket_path
 
     def start(self):
         """Start the server and waits for the client to connect."""
-        self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._server_socket.bind((self._host, self._port))
+        self._server_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self._server_socket.bind(self._socket_path)
         self._server_socket.listen(1)
-        print(f"DAP server is listening on {self._host}:{self._port}", flush=True)
+        print(f"SOCKET_PATH={self._socket_path}", flush=True)
 
-        client_conn, client_address = self._server_socket.accept()
-        self.client_conn = client_conn
-        self.client_address = client_address
-
-        print(f"Client connected: {client_address}")
+        self.client_conn = self._server_socket.accept()[0]
+        print("Client connected via Unix socket")
 
         self.notifier = DAPNotifier(self)
         self._request_handler.notifier = self.notifier
-
-    def handle_requests(self):
-        """Process client requests and sends responses."""
-        while True:
-            request = self._receive_request()
-            if request is None:
-                break
-
-            for response in self._request_handler.handle_request(request):
-                self._send_response(response)
 
     def stop(self):
         """Stop the server."""
         if self._server_socket:
             self._server_socket.close()
             print("Server stopped.")  # TODO: change print to logging for filtering
+        if self.client_conn:
+            self.client_conn.close()
+        self._temp_dir.cleanup()
 
-    def _process_request(self, request_body: bytes):
-        """
-        Process a client request.
+    def handle_requests(self):
+        """Process client requests and send responses."""
+        while True:
+            request = self._receive_request()
+            if request is None:
+                break
 
-        :param request_body: JSON request body.
-        """
-        try:
-            request = json.loads(request_body.decode())
-            print(f"Received request: {request}")
-
-            response = self._request_handler.handle_request(request)
-            if response:
-                self._send_response(response)
-
-        except json.JSONDecodeError:
-            self._send_error_response("Invalid JSON format", code=JSON_DECODE_ERROR)
-        except Exception as err:
-            self._send_error_response(str(err), code=INTERNAL_JSON_RPC_ERROR)
+            try:
+                responses = self._request_handler.handle_request(request)
+                for response in responses:
+                    self._send_response(response)
+            except Exception as err:
+                self._send_error_response(f"Internal error: {err}", INTERNAL_JSON_RPC_ERROR)
 
     def _send_response(self, response: Iterator[dict] | dict):
         """
@@ -96,7 +91,6 @@ class DAPServer:
         header = f"Content-Length: {content_length}\r\n\r\n"
         if self.client_conn:
             self.client_conn.sendall((header + response_str).encode())
-            print(f"Sent response: {response}", flush=True)
 
     def _send_error_response(self, message: str, code: int):
         """
@@ -116,21 +110,56 @@ class DAPServer:
 
     def _receive_request(self) -> dict | None:
         """
-        Accept a request from a client.
-
-        :return: JSON request as a dictionary or None if no data is received.
+        Read data from the socket, accumulates it in self._buffer
+        and extracts a single complete JSON request if possible.
         """
-        buffer = b""
         while True:
-            data = self._receive_data()
-            if not data:
-                return None
+            # Trying to extract the full query from the current buffer
+            request, buffer = self._extract_request_from_buffer(self._buffer)
+            self._buffer = buffer
 
-            buffer += data
-
-            request = self._process_buffer(buffer)
             if request is not None:
                 return request
+
+            # If there is no request, read new data from the socket
+            data = self._receive_data()
+            if not data:
+                # If no data is received, terminate reading.
+                return None
+            self._buffer += data
+
+    def _extract_request_from_buffer(self, buffer: bytes) -> tuple[dict | None, bytes]:
+        """
+        Attempt to extract the full JSON request from the buffer.
+        Returns a tuple (request, remaining_buffer), where request is the extracted request
+        (or None if the request could not be extracted) and remaining_buffer is the remaining data.
+        """
+        http_header_end_marker = b"\r\n\r\n"
+        header_end_marker_length = len(http_header_end_marker)
+        header_end = buffer.find(http_header_end_marker)
+        if header_end == -1:
+            # The headings are not complete.
+            return None, buffer
+
+        headers = buffer[:header_end].decode()
+        content_length = _get_content_length(headers)
+        if content_length is None:
+            # Content-Length header not found
+            return None, buffer
+
+        total_length = header_end + header_end_marker_length + content_length
+        if len(buffer) < total_length:
+            # The request body has not yet been fully received.
+            return None, buffer
+
+        request_body = buffer[header_end + header_end_marker_length : total_length]
+        try:
+            request = json.loads(request_body.decode())
+        except json.JSONDecodeError as err:
+            self._send_error_response(f"Invalid JSON format: {err}", JSON_DECODE_ERROR)
+            return None, buffer[total_length:]
+        remaining_buffer = buffer[total_length:]
+        return request, remaining_buffer
 
     def _receive_data(self) -> bytes | None:
         """

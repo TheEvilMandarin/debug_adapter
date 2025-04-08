@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from gdb.backend import GDBBackend
 
-from gdb.gdb_utils import is_gdb_response_successful
+from gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
 class BreakpointManager:
@@ -46,7 +46,7 @@ class BreakpointManager:
         """
         responses = self.backend.send_command_and_get_result(f"-symbol-list-lines {source_path}")
 
-        success, message = is_gdb_response_successful(responses)
+        success, message = is_gdb_responses_successful_with_message(responses)
         if not success:
             return False, message, []
 
@@ -120,7 +120,7 @@ class BreakpointManager:
             )
             responses.extend(response)
 
-            success, message = is_gdb_response_successful(response)
+            success, message = is_gdb_responses_successful_with_message(response)
 
             result_breakpoints.append(
                 {

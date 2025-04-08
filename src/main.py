@@ -26,12 +26,9 @@ if __name__ == "__main__":
         f"Starting Debug Adapter with GDB Path: {args.gdb_path} and Program: {args.program}",
     )
 
-    HOST = "127.0.0.1"
-    PORT = 4711
-
     gdb_backend = GDBBackend(gdb_path=args.gdb_path)
     request_handler = DAPRequestHandler(gdb_backend=gdb_backend)
-    server = DAPServer(host=HOST, port=PORT, request_handler=request_handler)
+    server = DAPServer(request_handler=request_handler)
 
     try:
         gdb_backend.start()

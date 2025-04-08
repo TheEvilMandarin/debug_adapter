@@ -12,6 +12,7 @@
         "gdbserver",
         "numchild",
         "osabi",
+        "pids",
         "pygdbmi",
         "solib"
     ],
