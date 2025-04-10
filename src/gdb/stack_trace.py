@@ -106,7 +106,9 @@ class StackTraceManager:
         :param value: The string to convert.
         :return: The integer value or 0 if conversion fails.
         """
+        if value is None:
+            return 0
         try:
-            return int(value) if value is not None else 0
+            return int(value)
         except ValueError:
             return 0

@@ -18,7 +18,7 @@ from common import (
     CommandResult,
 )
 from dap.dap_message import DAPEvent, DAPResponse
-from dap.notifier import DAPNotifier
+from dap.notifier import DAPNotifier, NullNotifier
 from gdb.backend import GDBBackend
 
 ARGUMENTS = "arguments"
@@ -38,7 +38,7 @@ def register_command(name: str):
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
 
-        wrapper._dap_command = name  # noqa: WPS437
+        wrapper._dap_command = name  # noqa: WPS437 # pylint: disable=W0212
         return wrapper
 
     return decorator
@@ -54,7 +54,7 @@ class DAPRequestHandler:
         :param gdb_backend: A GDBBackend instance to interact with GDB.
         """
         self.gdb_backend = gdb_backend
-        self._notifier: DAPNotifier | None = None
+        self._notifier: DAPNotifier = NullNotifier()
         self._commands = {}
 
         for attr_name in dir(self):
@@ -63,7 +63,7 @@ class DAPRequestHandler:
                 self._commands[attr._dap_command] = attr  # noqa: WPS437
 
     @property
-    def notifier(self) -> DAPNotifier | None:
+    def notifier(self) -> DAPNotifier:
         """Get the DAPNotifier."""
         return self._notifier
 
@@ -165,14 +165,13 @@ class DAPRequestHandler:
         yield response.to_dict()
 
         # TODO: depending on the user's settings whether he wants to stop execution.
-        if self.notifier:
-            self.notifier.start_notifier()
-            self.notifier.send_stopped_event(
-                reason="entry",
-                thread_id=1,
-                all_threads_stopped=True,
-                hit_breakpoint_ids=[],
-            )
+        self.notifier.start_notifier()
+        self.notifier.send_stopped_event(
+            reason="entry",
+            thread_id=1,
+            all_threads_stopped=True,
+            hit_breakpoint_ids=[],
+        )
 
     @register_command("launch")
     def _launch(self, request: dict) -> Iterator[dict]:
@@ -226,10 +225,14 @@ class DAPRequestHandler:
         result: CommandResult = self.gdb_backend.process_manager.attach_to_process(spawner_pid)
         self.gdb_backend.breakpoint_manager.set_exec_catchpoint()
         self.gdb_backend.execution_manager.continue_execution()
-        if self.notifier:
-            self.notifier.start_notifier()
-        bash_process = subprocess.Popen(["/bin/bash", program_runner])  # nosec B603 # noqa: S603
-        bash_process.wait()
+        self.notifier.start_notifier()
+        with subprocess.Popen(  # noqa: S603
+            [
+                "/bin/bash",
+                program_runner,
+            ],
+        ) as bash_process:  # nosec B603
+            bash_process.wait()
         return result, spawner_pid
 
     def _launch_by_default(self, request: dict) -> tuple[CommandResult, int | None]:
@@ -254,8 +257,7 @@ class DAPRequestHandler:
 
         self.gdb_backend.execution_manager.set_program_arguments(arg_string)
         result = self.gdb_backend.breakpoint_manager.set_breakpoint_on_main()
-        if self.notifier:
-            self.notifier.start_notifier()
+        self.notifier.start_notifier()
         self.gdb_backend.execution_manager.exec_run()
 
         return CommandResult(success=True, message=""), None
@@ -303,13 +305,9 @@ class DAPRequestHandler:
     def _add_inferiors(self, request: dict) -> Iterator[dict]:
         """Process the command `addInferiors`."""
         pids = self._get_argument(request, "pids", [])
-        if self.notifier:
-            # When adding inferiors, gdb briefly starts and stops the program being debugged.
-            # The client does not need to know about this
-            self.notifier.stop_notifier()
-            self.gdb_backend.process_manager.add_inferior_with_pids(pids)
-            self.notifier.start_notifier()
-        else:
+        # When adding inferiors, gdb briefly starts and stops the program being debugged.
+        # The client does not need to know about this
+        with self.notifier.suspend():
             self.gdb_backend.process_manager.add_inferior_with_pids(pids)
 
         response = {
@@ -329,15 +327,14 @@ class DAPRequestHandler:
         self.gdb_backend.process_manager.detach_inferiors_with_pids(pids)
         current_pid = self.gdb_backend.process_manager.get_current_pid()
 
-        if self.notifier:
-            # Send events to update the client's state
-            self.notifier.send_continued_event(thread_id="1", all_threads_continued=True)
-            self.notifier.send_stopped_event(
-                reason="detach inferior",
-                thread_id=1,
-                all_threads_stopped=True,
-                hit_breakpoint_ids=[],
-            )
+        # Send events to update the client's state
+        self.notifier.send_continued_event(thread_id="1", all_threads_continued=True)
+        self.notifier.send_stopped_event(
+            reason="detach inferior",
+            thread_id=1,
+            all_threads_stopped=True,
+            hit_breakpoint_ids=[],
+        )
 
         response = {
             "type": "response",
@@ -600,7 +597,7 @@ class DAPRequestHandler:
                     for var in variables
                 ],
             }
-        except Exception as err:
+        except (RuntimeError, KeyError, ValueError, TypeError, AttributeError) as err:
             response.success = False
             response.message = f"Failed to fetch variables: {err}"
 

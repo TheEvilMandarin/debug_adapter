@@ -8,7 +8,7 @@ from typing import Any
 from pygdbmi.gdbcontroller import GdbController
 
 from common import CommandResult
-from dap.notifier import DAPNotifier
+from dap.notifier import DAPNotifier, NullNotifier
 from gdb.breakpoints import BreakpointManager
 from gdb.execution_manager import ExecutionManager
 from gdb.gdb_utils import is_gdb_responses_successful_with_message
@@ -34,7 +34,7 @@ class GDBBackend:
         self._gdbmi: GdbController | None = None
         self._stop_monitoring = threading.Event()
         self._monitor_thread: threading.Thread | None = None
-        self._notifier: DAPNotifier | None = None
+        self._notifier: DAPNotifier = NullNotifier()
         self._response_queue: Queue[dict[str, Any]] = Queue()
 
         self.breakpoint_manager = BreakpointManager(self)
@@ -63,7 +63,7 @@ class GDBBackend:
             self._gdbmi = None
 
     @property
-    def notifier(self) -> DAPNotifier | None:
+    def notifier(self) -> DAPNotifier:
         """Get the DAPNotifier."""
         return self._notifier
 
@@ -115,45 +115,43 @@ class GDBBackend:
 
     def _handle_stop_event(self, response: dict):
         """Handle a GDB stop and sends a `stopped` event to the DAP."""
-        if self.notifier:
-            payload = response.get("payload", {})
+        payload = response.get("payload", {})
 
-            if "new-exec" in payload:
-                self.notifier.send_new_process_event()
-                return
+        if "new-exec" in payload:
+            self.notifier.send_new_process_event()
+            return
 
-            stop_reason = payload.get("reason", "unknown")
-            default_thread_id = 1
-            thread_id = int(payload.get("thread-id", default_thread_id))
-            hit_breakpoints = []
-            if "breakpoint" in stop_reason:
-                breakpoint_number = payload.get("bkptno")
-                if breakpoint_number:
-                    hit_breakpoints.append(int(breakpoint_number))
+        stop_reason = payload.get("reason", "unknown")
+        default_thread_id = 1
+        thread_id = int(payload.get("thread-id", default_thread_id))
+        hit_breakpoints = []
+        if "breakpoint" in stop_reason:
+            breakpoint_number = payload.get("bkptno")
+            if breakpoint_number:
+                hit_breakpoints.append(int(breakpoint_number))
 
-            if "exited" in stop_reason:
-                self.notifier.send_exited_process_event()
-                return
-            self.notifier.send_stopped_event(
-                reason=stop_reason,
-                thread_id=thread_id,
-                all_threads_stopped=payload.get("stopped-threads") == "all",
-                hit_breakpoint_ids=hit_breakpoints,
-            )
+        if "exited" in stop_reason:
+            self.notifier.send_exited_process_event()
+            return
+        self.notifier.send_stopped_event(
+            reason=stop_reason,
+            thread_id=thread_id,
+            all_threads_stopped=payload.get("stopped-threads") == "all",
+            hit_breakpoint_ids=hit_breakpoints,
+        )
 
     def _handle_continue_event(self, response: dict):
         """Handle the continuation of program execution and send the `continue` event to the DAP."""
-        if self.notifier:
-            payload = response.get("payload", {})
-            thread_id = payload.get("thread-id", "")
+        payload = response.get("payload", {})
+        thread_id = payload.get("thread-id", "")
 
-            self.notifier.send_continued_event(
-                thread_id=thread_id,
-                all_threads_continued=response.get("continued-threads") == "all"
-                or thread_id == "all",
-            )
+        self.notifier.send_continued_event(
+            thread_id=thread_id,
+            all_threads_continued=response.get("continued-threads") == "all"
+            or thread_id == "all",
+        )
 
-            self.notifier.send_invalidated_event(areas=["stacks"])
+        self.notifier.send_invalidated_event(areas=["stacks"])
 
     def send_command_and_get_result(
         self,
