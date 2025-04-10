@@ -115,6 +115,16 @@ class DAPNotifier:
         )
         self.send_event(event.to_dict())
 
+    def send_new_process_event(self):
+        """Create and dispatches the 'exec-new' event."""
+        # We do not pass the process number, because it will be automatically added
+        # to the list of inferiors when updating the ui. If this is a process that
+        # was created during the launch request (which is most likely), in post-processing
+        # we will disconnect from the spawner process and switch to the only available inferior
+        # (the new process we need).
+        event = DAPEvent(event="newProcess")
+        self.send_event(event.to_dict())
+
     def send_exited_process_event(self):
         """Create and dispatches the 'exited' event."""
         event = DAPEvent(event="exitedProcess")

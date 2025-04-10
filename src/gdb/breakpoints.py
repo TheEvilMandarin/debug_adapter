@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from common import CommandResult
     from gdb.backend import GDBBackend
 
 from gdb.gdb_utils import is_gdb_responses_successful_with_message
@@ -133,6 +134,12 @@ class BreakpointManager:
 
         return True, "", result_breakpoints
 
+    def set_breakpoint_on_main(self) -> CommandResult:
+        """Set breakpoint in GDB on main function."""
+        return self.backend.send_command_and_check_for_success(
+            "-break-insert main",
+        )
+
     def clear_breakpoints(self, source_path: str):
         """
         Remove all breakpoints in the specified file.
@@ -143,6 +150,13 @@ class BreakpointManager:
 
         breakpoints = self._get_breakpoints_from_response(responses, source_path)
         self._delete_breakpoints(breakpoints)
+
+    def set_exec_catchpoint(self):
+        """
+        Set a catchpoint in GDB to pause execution when the program
+        performs an exec() system call.
+        """
+        self.backend.send_command_and_get_result("catch exec")
 
     def _get_breakpoints_from_response(self, responses: list[dict], source_path: str) -> list[str]:
         """

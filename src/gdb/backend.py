@@ -118,6 +118,10 @@ class GDBBackend:
         if self.notifier:
             payload = response.get("payload", {})
 
+            if "new-exec" in payload:
+                self.notifier.send_new_process_event()
+                return
+
             stop_reason = payload.get("reason", "unknown")
             default_thread_id = 1
             thread_id = int(payload.get("thread-id", default_thread_id))
