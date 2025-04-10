@@ -7,12 +7,13 @@ such as stepping in, stepping out, pausing, and continuing execution.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common import CommandResult
     from gdb.backend import GDBBackend
 
+from common import CommandResult
 from gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
@@ -32,7 +33,7 @@ class ExecutionManager:
         """
         self.backend = backend
 
-    def execute_step_out(self, thread_id: int | None, single_thread: bool) -> tuple[bool, str]:
+    def execute_step_out(self, thread_id: int | None, single_thread: bool) -> CommandResult:
         """
         Execute the `finish` command in GDB after switching to the specified thread.
 
@@ -45,14 +46,14 @@ class ExecutionManager:
                 f"-thread-select {thread_id}",
             )
             if not success:
-                return False, f"Failed to select thread {thread_id}: {message}"
+                return CommandResult(success, f"Failed to select thread {thread_id}: {message}")
 
         scheduler_mode = "on" if single_thread else "off"
         self.backend.send_command_and_get_result(f"set scheduler-locking {scheduler_mode}")
 
         return self.backend.send_command_and_check_for_success("finish &")
 
-    def execute_step_in(self, thread_id: int | None) -> tuple[bool, str]:
+    def execute_step_in(self, thread_id: int | None) -> CommandResult:
         """
         Execute the `-exec-step` command in GDB after switching to the specified thread.
 
@@ -64,11 +65,11 @@ class ExecutionManager:
                 f"-thread-select {thread_id}",
             )
             if not success:
-                return False, f"Failed to select thread {thread_id}: {message}"
+                return CommandResult(success, f"Failed to select thread {thread_id}: {message}")
 
         return self.backend.send_command_and_check_for_success("-exec-step")
 
-    def execute_next(self, thread_id: int | None) -> tuple[bool, str]:
+    def execute_next(self, thread_id: int | None) -> CommandResult:
         """
         Execute the `-exec-next` command in GDB after switching to the specified thread.
 
@@ -80,7 +81,7 @@ class ExecutionManager:
                 f"-thread-select {thread_id}",
             )
             if not success:
-                return False, f"Failed to select thread {thread_id}: {message}"
+                return CommandResult(success, f"Failed to select thread {thread_id}: {message}")
 
         return self.backend.send_command_and_check_for_success("-exec-next")
 
@@ -97,3 +98,21 @@ class ExecutionManager:
         command = f"-exec-continue --thread {thread_id}" if thread_id else "-exec-continue"
         responses = self.backend.send_command_and_get_result(command)
         return is_gdb_responses_successful_with_message(responses)
+
+    def load_executable_and_symbols(self, program_path: str) -> CommandResult:
+        """Load the executable file and its debug symbols into GDB."""
+        if program_path and not Path(program_path).exists():
+            return CommandResult(
+                success=False,
+                message=f"The path {program_path} does not exist",
+            )
+        self.backend.send_command_and_get_result(f"-file-exec-and-symbols {program_path}")
+        return CommandResult(success=True, message="")
+
+    def set_program_arguments(self, arg_string: str):
+        """Set the command-line arguments for the program being debugged in GDB."""
+        self.backend.send_command_and_get_result(f"-exec-arguments {arg_string}")
+
+    def exec_run(self):
+        """Start execution of the debugged program in GDB."""
+        self.backend.send_command_and_get_result("-exec-run")

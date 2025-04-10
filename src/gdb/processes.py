@@ -90,12 +90,12 @@ class ProcessManager:
         # Switch to the target inferior and detach unnecessary ones
         return self._switch_to_target_inferior_and_detach_others(target_inferior, groups)
 
-    def get_processes(self) -> tuple[bool, str, list[dict]]:
+    def get_processes(self) -> tuple[CommandResult, list[dict]]:
         """Request a list of processes."""
         command = "-info-os processes"
         result = self.backend.send_command_and_get_result(command)
         success, message = is_gdb_responses_successful_with_message(result)
-        return success, message, self.parse_processes(result)
+        return CommandResult(success, message), self.parse_processes(result)
 
     def parse_processes(self, result: list[dict]) -> list[dict]:
         """Extract a list of processes from the output of a GDB command."""
@@ -114,6 +114,18 @@ class ProcessManager:
                 processes.append({"pid": pid, "name": name})
 
         return processes
+
+    def get_pid_by_name(self, process_name: str) -> int | None:
+        """Get PID of a process by its name."""
+        result, processes = self.get_processes()
+        if not result.success:
+            return None
+
+        for proc in processes:
+            if proc.get("name") == process_name:
+                return proc.get("pid", None)
+
+        return None
 
     def _extract_pid_from_target_id(self, target_id: str) -> int | None:
         # parse format "Thread <pid>.<tid>"
@@ -322,14 +334,17 @@ class ProcessManager:
         self.backend.send_command_and_get_result("detach")
         return CommandResult(success, message)
 
-    def load_program_symbols(self, program_path: str):
+    def load_program_symbols(self, program_path: str) -> CommandResult:
         """Load the program symbols into the debugger."""
         if program_path:
             if not Path(program_path).exists():
-                return False, f"The path {program_path} does not exist"
+                return CommandResult(
+                    success=False,
+                    message=f"The path {program_path} does not exist",
+                )
             command = f"file {program_path}"
             self.backend.send_command_and_get_result(command)
-        return True, ""
+        return CommandResult(success=True, message="")
 
     def _find_target_inferior_and_groups(
         self,
