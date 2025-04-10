@@ -10,6 +10,7 @@ from collections import namedtuple
 
 CommandResult = namedtuple("CommandResult", ["success", "message"])
 
+
 # Constants for `variablesReference`
 VAR_REF_LOCAL_BASE = 100000  # Local variables
 VAR_REF_REGISTERS_BASE = 200000  # Registers
