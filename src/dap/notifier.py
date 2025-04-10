@@ -8,6 +8,7 @@ and "invalidated", to notify the client about changes in the debugger's state.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -44,11 +45,8 @@ class DAPNotifier:
         header = f"Content-Length: {content_length}\r\n\r\n"
 
         if self.notifier_is_active:
-            try:
-                self.server.client_conn.sendall((header + event_json).encode())
-                print(f"Sent event: {event}", flush=True)
-            except Exception as ex:
-                print(f"Failed to send event: {ex}\n.Content of event: {event}", flush=True)
+            self.server.client_conn.sendall((header + event_json).encode())
+            print(f"Sent event: {event}", flush=True)
         else:
             print(
                 f"Unable to send event: notifier is not active. Content of event: {event}",
@@ -137,3 +135,99 @@ class DAPNotifier:
     def start_notifier(self):
         """Activate the notifier to allow sending events to the client."""
         self.notifier_is_active = True
+
+    @contextmanager
+    def suspend(self):
+        """Context manager that temporarily disables event notifications."""
+        self.stop_notifier()
+        try:
+            yield
+        finally:
+            self.start_notifier()
+
+
+class NullNotifier(DAPNotifier):
+    """
+    A no-operation (no-op) notifier that implements the same interface as DAPNotifier.
+
+    This class can be used as a drop-in replacement for DAPNotifier when actual event sending
+    is not desired or available. All methods are implemented as no-ops.
+    """
+
+    def __init__(self, *_):
+        """
+        Initialize the NullNotifier.
+
+        This constructor accepts any arguments, but ignores them because no initialization
+        is necessary for a no-op notifier.
+        """
+        super().__init__(server=None)
+
+    def send_event(self, event: dict):
+        """
+        No-op implementation of send_event.
+
+        This method intentionally does nothing and ignores the 'event' parameter.
+
+        :param event: A dictionary representing the event to be sent.
+        """
+
+    def send_stopped_event(self, *args, **kwargs):
+        """
+        No-op implementation of send_stopped_event.
+
+        Ignores any positional or keyword arguments that would normally be used
+        to create and send a 'stopped' event.
+        """
+
+    def send_continued_event(self, *args, **kwargs):
+        """
+        No-op implementation of send_continued_event.
+
+        This method ignores arguments provided for a 'continued' event.
+        """
+
+    def send_invalidated_event(self, *args, **kwargs):
+        """
+        No-op implementation of send_invalidated_event.
+
+        This method ignores any input related to invalidated areas.
+        """
+
+    def send_new_process_event(self):
+        """
+        No-op implementation of send_new_process_event.
+
+        This method does not perform any action for a new process event.
+        """
+
+    def send_exited_process_event(self):
+        """
+        No-op implementation of send_exited_process_event.
+
+        This method does not perform any action for an exited process event.
+        """
+
+    def stop_notifier(self):
+        """
+        No-op implementation of stop_notifier.
+
+        This method does nothing; it is provided to adhere to the interface.
+        """
+
+    def start_notifier(self):
+        """
+        No-op implementation of start_notifier.
+
+        This method does nothing; it is provided to adhere to the interface.
+        """
+
+    @contextmanager
+    def suspend(self):
+        """
+        No-op context manager that does not change any state.
+
+        This context manager yields control immediately and performs no actions
+        upon entering or exiting the context.
+        """
+        yield

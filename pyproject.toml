@@ -13,15 +13,13 @@ pygdbmi = "0.11.0.0"
 [tool.poetry.group.dev.dependencies]
 ruff = "^0.6.0"
 mypy = "^1.11.0"
+pylint = "^3.3.6"
 pre-commit = "^3.8.0"
 pytest = "^8.2.2"
 poethepoet = "^0.27.0"
 bandit = "^1.7.9"
 flake8 = "^7.1.1"
-wemake-python-styleguide = [
-    {version = "<0.19.0", python = "<3.12"},
-    {version = "0.19.dev0", python = ">=3.12"}
-]
+wemake-python-styleguide = "^1.0.0"
 
 [tool.ruff]
 target-version = "py310"
@@ -66,6 +64,12 @@ lines-after-imports = 2
 [tool.mypy]
 files = ["src/**/*.py"]
 
+[tool.pylint.classes]
+max-attributes = 15
+
+[tool.pylint.messages_control]
+disable = ["W0511", "C0413", "C0412", "R0903"]
+
 [tool.bandit]
 exclude_dirs = ["test", ".venv", "node_modules", ".vendor"]
 
@@ -84,10 +88,11 @@ ruff-format = "ruff format --check"
 mypy = "mypy"
 bandit = "bandit -c pyproject.toml -r ."
 flake8 = "flake8"
+pylint = "pylint src"
 pytest-small = "pytest test/small"
 pytest-big = "pytest test/big"
 pytest = ["pytest-small", "pytest-big"]
-check.sequence = ["poetry-check", "cspell", "ruff", "mypy", "bandit", "flake8"]
+check.sequence = ["poetry-check", "cspell", "ruff", "mypy", "bandit", "flake8", "pylint"]
 check.ignore_fail = "return_non_zero"
 
 [build-system]

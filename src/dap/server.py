@@ -18,7 +18,7 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from dap.notifier import DAPNotifier
+from dap.notifier import DAPNotifier, NullNotifier
 from dap.request_handler import DAPRequestHandler
 
 JSON_DECODE_ERROR = -32700
@@ -33,8 +33,8 @@ class DAPServer:
         self._request_handler = request_handler
         self._server_socket = None
         self.client_conn = None
-        self.notifier = None
-        self._temp_dir = tempfile.TemporaryDirectory()
+        self.notifier = NullNotifier()
+        self._temp_dir = tempfile.TemporaryDirectory()  # pylint: disable=consider-using-with
         self._socket_path = str(Path(self._temp_dir.name) / "dap_socket")
         self._buffer = b""
         atexit.register(self.stop)
@@ -77,7 +77,7 @@ class DAPServer:
                 responses = self._request_handler.handle_request(request)
                 for response in responses:
                     self._send_response(response)
-            except Exception as err:
+            except (KeyError, ValueError, TypeError, RuntimeError) as err:
                 self._send_error_response(f"Internal error: {err}", INTERNAL_JSON_RPC_ERROR)
 
     def _send_response(self, response: Iterator[dict] | dict):
