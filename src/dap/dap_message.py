@@ -22,7 +22,7 @@ class DAPResponse:
         success: bool = True,
         body: dict | None = None,
         message: str = "",
-    ):
+    ):  # pylint: disable=too-many-arguments too-many-positional-arguments
         """
         Initialize a DAPResponse object.
 

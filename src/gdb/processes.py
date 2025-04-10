@@ -315,7 +315,7 @@ class ProcessManager:
         if target_inferior.startswith("i"):
             target_inferior = target_inferior[1:]
 
-        success, message = self.backend.send_command_and_check_for_success(
+        success, _ = self.backend.send_command_and_check_for_success(
             f"inferior {target_inferior}",
         )
         return success
