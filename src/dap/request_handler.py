@@ -7,12 +7,20 @@ It translates these requests into appropriate commands for the GDB backend and m
 interaction between the client and the debugger.
 """
 
+import shlex
+import subprocess  # nosec B404 # noqa: S404
 from collections.abc import Iterator
 from functools import wraps
 
-from common import VAR_REF_LOCAL_BASE, VAR_REF_REGISTERS_BASE, CommandResult
+from common import (
+    SUCCESSFUL_RESULT,
+    UNSUCCESSFUL_RESULT,
+    VAR_REF_LOCAL_BASE,
+    VAR_REF_REGISTERS_BASE,
+    CommandResult,
+)
 from dap.dap_message import DAPEvent, DAPResponse
-from dap.notifier import DAPNotifier
+from dap.notifier import DAPNotifier, NullNotifier
 from gdb.backend import GDBBackend
 
 ARGUMENTS = "arguments"
@@ -32,7 +40,7 @@ def register_command(name: str):
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
 
-        wrapper._dap_command = name  # noqa: WPS437
+        wrapper._dap_command = name  # noqa: WPS437 # pylint: disable=W0212
         return wrapper
 
     return decorator
@@ -48,7 +56,7 @@ class DAPRequestHandler:
         :param gdb_backend: A GDBBackend instance to interact with GDB.
         """
         self.gdb_backend = gdb_backend
-        self._notifier: DAPNotifier | None = None
+        self._notifier: DAPNotifier = NullNotifier()
         self._commands = {}
 
         for attr_name in dir(self):
@@ -57,7 +65,7 @@ class DAPRequestHandler:
                 self._commands[attr._dap_command] = attr  # noqa: WPS437
 
     @property
-    def notifier(self) -> DAPNotifier | None:
+    def notifier(self) -> DAPNotifier:
         """Get the DAPNotifier."""
         return self._notifier
 
@@ -141,60 +149,167 @@ class DAPRequestHandler:
     @register_command("attach")
     def _attach(self, request: dict) -> Iterator[dict]:
         """Process the command `attach`."""
-        success, message = self._set_custom_settings(request)
+        result: CommandResult = self._set_custom_settings(request)
 
-        if success:
+        if result.success:
             pid = self._get_argument(request, "pid")
             print(f"Attaching to process with PID: {pid}")
 
             program_path = self._get_argument(request, "program")
-            success, message = self.gdb_backend.process_manager.attach_to_process(pid, program_path)
+            result = self.gdb_backend.process_manager.attach_to_process(pid, program_path)
 
         response = DAPResponse(
             request=request,
             command="attach",
-            success=success,
-            message=message,
+            success=result.success,
+            message=result.message,
         )
         yield response.to_dict()
 
         # TODO: depending on the user's settings whether he wants to stop execution.
-        if self.notifier:
-            self.notifier.start_notifier()
-            self.notifier.send_stopped_event(
-                reason="entry",
-                thread_id=1,
-                all_threads_stopped=True,
-                hit_breakpoint_ids=[],
-            )
+        self.notifier.start_notifier()
+        self.notifier.send_stopped_event(
+            reason="entry",
+            thread_id=1,
+            all_threads_stopped=True,
+            hit_breakpoint_ids=[],
+        )
+
+    @register_command("launch")
+    def _launch(self, request: dict) -> Iterator[dict]:
+        """Process the command launch."""
+        result: CommandResult = self._set_custom_settings(request)
+        spawner_pid = None
+        if result.success:
+            program_runner = self._get_argument(request, "programRunner")
+            if program_runner:
+                result, spawner_pid = self._launch_via_runner(request, program_runner)
+            else:
+                result, spawner_pid = self._launch_by_default(request)
+
+        response = DAPResponse(
+            request=request,
+            command="launch",
+            success=result.success,
+            message=result.message,
+            body={
+                "spawnerPid": spawner_pid,
+            },
+        )
+        yield response.to_dict()
+
+    def _launch_via_runner(
+        self,
+        request: dict,
+        program_runner: str,
+    ) -> tuple[CommandResult, int | None]:
+        """
+        Launch the application via programRunner.
+
+        If programRunner is specified, processSpawner is also required to find the spawner process.
+        Spawner - a process that itself spawns new processes.
+        If the process search is successful, attach occurs, the bash process for the runner
+        is launched, and further actions are taken.
+        """
+        process_spawner = self._get_argument(request, "processSpawner")
+        if not process_spawner:
+            return CommandResult(
+                UNSUCCESSFUL_RESULT,
+                "processSpawner not specified",
+            ), None
+        spawner_pid = self.gdb_backend.process_manager.get_pid_by_name(process_spawner)
+        if not spawner_pid:
+            return CommandResult(
+                UNSUCCESSFUL_RESULT,
+                f"Unable to find the process {process_spawner}",
+            ), None
+
+        result: CommandResult = self.gdb_backend.process_manager.attach_to_process(spawner_pid)
+        self.gdb_backend.breakpoint_manager.set_exec_catchpoint()
+        self.gdb_backend.execution_manager.continue_execution()
+        self.notifier.start_notifier()
+        with subprocess.Popen(  # noqa: S603
+            [
+                "/bin/bash",
+                program_runner,
+            ],
+        ) as bash_process:  # nosec B603
+            bash_process.wait()
+        return result, spawner_pid
+
+    def _launch_by_default(self, request: dict) -> tuple[CommandResult, int | None]:
+        """
+        Launch the application by default.
+
+        Loading symbols from executable file, setting arguments,
+        launching the application and calling pause_execution after startup.
+        """
+        program_path = self._get_argument(request, "program")
+        program_args = self._get_argument(request, "args") or []
+        result: CommandResult = self.gdb_backend.execution_manager.load_executable_and_symbols(
+            program_path,
+        )
+        if not result.success:
+            return result, None
+
+        arg_string = ""
+        if program_args:
+            quoted_args = [shlex.quote(arg) for arg in program_args]
+            arg_string = " ".join(quoted_args)
+
+        self.gdb_backend.execution_manager.set_program_arguments(arg_string)
+        result = self.gdb_backend.breakpoint_manager.set_breakpoint_on_main()
+        self.notifier.start_notifier()
+        self.gdb_backend.execution_manager.exec_run()
+
+        return CommandResult(SUCCESSFUL_RESULT, ""), None
+
+    @register_command("handleNewProcess")
+    def _handle_new_process(self, request: dict) -> Iterator[dict]:
+        """Process the command `handleNewProcess`."""
+        program_runner = self._get_argument(request, "spawnerPid")
+        program_path = self._get_argument(request, "program")
+        self.gdb_backend.process_manager.detach_inferiors_with_pids([program_runner])
+        result: CommandResult = self.gdb_backend.process_manager.load_program_symbols(program_path)
+        processes: list = []
+        if result.success:
+            result = self.gdb_backend.breakpoint_manager.set_breakpoint_on_main()
+        if result.success:
+            result, processes = self.gdb_backend.process_manager.get_processes()
+        current_pid = self.gdb_backend.process_manager.get_current_pid()
+
+        response = DAPResponse(
+            request=request,
+            command="handleNewProcess",
+            success=result.success,
+            message=result.message,
+            body={"processes": processes, "currentProcess": current_pid},
+        )
+        yield response.to_dict()
+        self.gdb_backend.execution_manager.continue_execution()
 
     @register_command("listProcesses")
     def _list_processes(self, request: dict) -> Iterator[dict]:
         """Process the command `listProcesses`."""
-        success, message, processes = self.gdb_backend.process_manager.get_processes()
+        result, processes = self.gdb_backend.process_manager.get_processes()
         current_pid = self.gdb_backend.process_manager.get_current_pid()
 
-        response = {
-            "type": "response",
-            "request_seq": request.get("seq", 0),
-            "command": "listProcesses",
-            "success": success,
-            "message": message,
-            "body": {"processes": processes, "currentProcess": current_pid},
-        }
-        yield response
+        response = DAPResponse(
+            request=request,
+            command="listProcesses",
+            success=result.success,
+            message=result.message,
+            body={"processes": processes, "currentProcess": current_pid},
+        )
+        yield response.to_dict()
 
     @register_command("addInferiors")
     def _add_inferiors(self, request: dict) -> Iterator[dict]:
         """Process the command `addInferiors`."""
         pids = self._get_argument(request, "pids", [])
-        if self.notifier:
-            # When adding inferiors, gdb briefly starts and stops the program being debugged.
-            # The client does not need to know about this
-            self.notifier.stop_notifier()
-            self.gdb_backend.process_manager.add_inferior_with_pids(pids)
-            self.notifier.start_notifier()
-        else:
+        # When adding inferiors, gdb briefly starts and stops the program being debugged.
+        # The client does not need to know about this
+        with self.notifier.suspend():
             self.gdb_backend.process_manager.add_inferior_with_pids(pids)
 
         response = {
@@ -214,15 +329,14 @@ class DAPRequestHandler:
         self.gdb_backend.process_manager.detach_inferiors_with_pids(pids)
         current_pid = self.gdb_backend.process_manager.get_current_pid()
 
-        if self.notifier:
-            # Send events to update the client's state
-            self.notifier.send_continued_event(thread_id="1", all_threads_continued=True)
-            self.notifier.send_stopped_event(
-                reason="detach inferior",
-                thread_id=1,
-                all_threads_stopped=True,
-                hit_breakpoint_ids=[],
-            )
+        # Send events to update the client's state
+        self.notifier.send_continued_event(thread_id="1", all_threads_continued=True)
+        self.notifier.send_stopped_event(
+            reason="detach inferior",
+            thread_id=1,
+            all_threads_stopped=True,
+            hit_breakpoint_ids=[],
+        )
 
         response = {
             "type": "response",
@@ -333,13 +447,13 @@ class DAPRequestHandler:
         """Process the command `continue`."""
         thread_id = self._get_argument(request, THREAD_ID)
 
-        success, message = self.gdb_backend.execution_manager.continue_execution(thread_id)
+        result: CommandResult = self.gdb_backend.execution_manager.continue_execution(thread_id)
 
         response = DAPResponse(
             request=request,
             command="continue",
-            success=success,
-            message=message,
+            success=result.success,
+            message=result.message,
         )
         yield response.to_dict()
 
@@ -348,13 +462,13 @@ class DAPRequestHandler:
         """Process the command `pause`."""
         thread_id = self._get_argument(request, THREAD_ID)
 
-        success, message = self.gdb_backend.execution_manager.pause_execution(thread_id)
+        result: CommandResult = self.gdb_backend.execution_manager.pause_execution(thread_id)
 
         response = DAPResponse(
             request=request,
             command="pause",
-            success=success,
-            message=message,
+            success=result.success,
+            message=result.message,
         )
         yield response.to_dict()
 
@@ -485,7 +599,7 @@ class DAPRequestHandler:
                     for var in variables
                 ],
             }
-        except Exception as err:
+        except (RuntimeError, KeyError, ValueError, TypeError, AttributeError) as err:
             response.success = False
             response.message = f"Failed to fetch variables: {err}"
 
@@ -576,11 +690,11 @@ class DAPRequestHandler:
             message="",
         )
 
-        success, message = self.gdb_backend.execution_manager.execute_next(thread_id)
+        result: CommandResult = self.gdb_backend.execution_manager.execute_next(thread_id)
 
-        if not success:
+        if not result.success:
             response.success = False
-            response.message = message
+            response.message = result.message
         yield response.to_dict()
 
     @register_command("stepIn")
@@ -595,11 +709,11 @@ class DAPRequestHandler:
             message="",
         )
 
-        success, message = self.gdb_backend.execution_manager.execute_step_in(thread_id)
+        result: CommandResult = self.gdb_backend.execution_manager.execute_step_in(thread_id)
 
-        if not success:
+        if not result.success:
             response.success = False
-            response.message = message
+            response.message = result.message
         yield response.to_dict()
 
     @register_command("stepOut")
@@ -616,14 +730,14 @@ class DAPRequestHandler:
             message="",
         )
 
-        success, message = self.gdb_backend.execution_manager.execute_step_out(
+        result: CommandResult = self.gdb_backend.execution_manager.execute_step_out(
             thread_id,
             single_thread,
         )
 
-        if not success:
+        if not result.success:
             response.success = False
-            response.message = message
+            response.message = result.message
         yield response.to_dict()
 
     def _unsupported_command(self, request: dict) -> Iterator[dict]:
