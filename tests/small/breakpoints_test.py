@@ -2,7 +2,7 @@
 
 from unittest.mock import Mock
 
-from src.gdb.breakpoints import BreakpointManager
+from debug_adapter.gdb.breakpoints import BreakpointManager
 
 
 def test_set_breakpoints(bp_manager: BreakpointManager, backend_mock: Mock):

@@ -11,7 +11,7 @@ import subprocess  # nosec B404 # noqa: S404
 
 import pytest
 
-from src.dap.server import DAPServer
+from debug_adapter.dap.server import DAPServer
 from tests.big.conftest import BINARY_SERVER_PATH, is_ptrace_scope_allowed
 from tests.big.helpers.dap import DAPClient
 from tests.big.helpers.debug_orchestrator import DebugOrchestrator

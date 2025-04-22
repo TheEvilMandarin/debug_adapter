@@ -4,7 +4,14 @@ version = "0.1"
 description = ""
 authors = []
 readme = "README.md"
-package-mode = false
+package-mode = true
+
+packages = [
+  { include = "debug_adapter", from = "src" }
+]
+
+[tool.poetry.scripts]
+run_debug_adapter = "debug_adapter.main:main"
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -63,6 +70,7 @@ lines-after-imports = 2
 
 [tool.mypy]
 files = ["src/**/*.py"]
+mypy_path = "src"
 
 [tool.pylint.classes]
 max-attributes = 15

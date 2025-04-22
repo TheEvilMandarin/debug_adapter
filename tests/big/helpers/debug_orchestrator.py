@@ -10,7 +10,7 @@ import socket
 import subprocess  # noqa: S404 # nosec B404
 from pathlib import Path
 
-from src.dap.server import DAPServer
+from debug_adapter.dap.server import DAPServer
 from tests.big.conftest import BINARY_SERVER_PATH, CPP_CLIENT_SOURCE, CPP_SERVER_SOURCE
 from tests.big.helpers.dap import DAPClient, recv_until_event
 

@@ -1,6 +1,6 @@
 """Utility functions for GDB response handling."""
 
-from common import CommandResult
+from debug_adapter.common import CommandResult
 
 
 def is_gdb_responses_successful_with_message(responses: list[dict]) -> CommandResult:

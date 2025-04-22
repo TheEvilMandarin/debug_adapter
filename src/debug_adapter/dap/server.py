@@ -18,8 +18,8 @@ import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
-from dap.notifier import DAPNotifier, NullNotifier
-from dap.request_handler import DAPRequestHandler
+from debug_adapter.dap.notifier import DAPNotifier, NullNotifier
+from debug_adapter.dap.request_handler import DAPRequestHandler
 
 JSON_DECODE_ERROR = -32700
 INTERNAL_JSON_RPC_ERROR = -32603

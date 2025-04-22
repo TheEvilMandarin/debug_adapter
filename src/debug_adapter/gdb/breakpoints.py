@@ -9,10 +9,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from common import CommandResult
-    from gdb.backend import GDBBackend
+    from debug_adapter.common import CommandResult
+    from debug_adapter.gdb.backend import GDBBackend
 
-from gdb.gdb_utils import is_gdb_responses_successful_with_message
+from debug_adapter.gdb.gdb_utils import is_gdb_responses_successful_with_message
 
 
 class BreakpointManager:

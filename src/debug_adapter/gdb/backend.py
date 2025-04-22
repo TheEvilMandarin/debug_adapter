@@ -7,15 +7,15 @@ from typing import Any
 
 from pygdbmi.gdbcontroller import GdbController
 
-from common import CommandResult
-from dap.notifier import DAPNotifier, NullNotifier
-from gdb.breakpoints import BreakpointManager
-from gdb.execution_manager import ExecutionManager
-from gdb.gdb_utils import is_gdb_responses_successful_with_message
-from gdb.processes import ProcessManager
-from gdb.stack_trace import StackTraceManager
-from gdb.threads import ThreadManager
-from gdb.variables import VariableManager
+from debug_adapter.common import CommandResult
+from debug_adapter.dap.notifier import DAPNotifier, NullNotifier
+from debug_adapter.gdb.breakpoints import BreakpointManager
+from debug_adapter.gdb.execution_manager import ExecutionManager
+from debug_adapter.gdb.gdb_utils import is_gdb_responses_successful_with_message
+from debug_adapter.gdb.processes import ProcessManager
+from debug_adapter.gdb.stack_trace import StackTraceManager
+from debug_adapter.gdb.threads import ThreadManager
+from debug_adapter.gdb.variables import VariableManager
 
 DEFAULT_TIMEOUT_WAITING_RESPONSE_FROM_GDB = 20.0
 
