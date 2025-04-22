@@ -71,7 +71,8 @@ max-attributes = 15
 disable = ["W0511", "C0413", "C0412", "R0903"]
 
 [tool.bandit]
-exclude_dirs = ["test", ".venv", "node_modules", ".vendor"]
+exclude_dirs = [".venv", "node_modules", ".vendor"]
+skips = ["B101"]
 
 [tool.pytest.ini_options]
 pythonpath = "."
@@ -89,10 +90,10 @@ mypy = "mypy"
 bandit = "bandit -c pyproject.toml -r ."
 flake8 = "flake8"
 pylint = "pylint src"
-pytest-small = "pytest test/small"
-pytest-big = "pytest test/big"
+pytest-small = "pytest tests/small"
+pytest-big = "pytest tests/big"
 pytest = ["pytest-small", "pytest-big"]
-check.sequence = ["poetry-check", "cspell", "ruff", "mypy", "bandit", "flake8", "pylint"]
+check.sequence = ["poetry-check", "cspell", "ruff", "mypy", "bandit", "flake8", "pylint", "pytest"]
 check.ignore_fail = "return_non_zero"
 
 [build-system]
