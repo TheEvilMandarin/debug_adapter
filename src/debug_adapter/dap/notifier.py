@@ -12,11 +12,11 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from dap.server import DAPServer
+    from debug_adapter.dap.server import DAPServer
 
 import json
 
-from dap.dap_message import DAPEvent
+from debug_adapter.dap.dap_message import DAPEvent
 
 
 class DAPNotifier:

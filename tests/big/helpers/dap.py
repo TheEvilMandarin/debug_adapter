@@ -13,7 +13,7 @@ import time
 
 import pytest
 
-from src.dap.server import _get_content_length  # noqa: WPS450
+from debug_adapter.dap.server import _get_content_length  # noqa: WPS450
 
 
 class DAPClient:

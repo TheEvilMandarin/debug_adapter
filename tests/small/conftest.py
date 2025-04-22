@@ -4,9 +4,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from src.gdb.backend import GDBBackend
-from src.gdb.breakpoints import BreakpointManager
-from src.gdb.variables import VariableManager
+from debug_adapter.gdb.backend import GDBBackend
+from debug_adapter.gdb.breakpoints import BreakpointManager
+from debug_adapter.gdb.variables import VariableManager
 
 
 @pytest.fixture

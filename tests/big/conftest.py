@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from src.dap.request_handler import DAPRequestHandler
-from src.dap.server import DAPServer  # noqa: WPS450
-from src.gdb.backend import GDBBackend
+from debug_adapter.dap.request_handler import DAPRequestHandler
+from debug_adapter.dap.server import DAPServer  # noqa: WPS450
+from debug_adapter.gdb.backend import GDBBackend
 
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 CPP_SERVER_SOURCE = ARTIFACTS_DIR / "server.cpp"

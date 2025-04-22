@@ -1,7 +1,7 @@
 """Unit tests for the GDB variable handling module."""
 
-from src.common import VAR_REF_DYNAMIC_BASE
-from src.gdb.variables import VariableManager, escape_gdb_var_name
+from debug_adapter.common import VAR_REF_DYNAMIC_BASE
+from debug_adapter.gdb.variables import VariableManager, escape_gdb_var_name
 
 
 def test_is_hex_pointer_true(variable_manager: VariableManager):

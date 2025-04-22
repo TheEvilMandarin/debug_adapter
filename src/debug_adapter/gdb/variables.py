@@ -11,10 +11,10 @@ import re
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gdb.backend import GDBBackend
+    from debug_adapter.gdb.backend import GDBBackend
 
-from common import VAR_REF_DYNAMIC_BASE, VAR_REF_LOCAL_BASE, VAR_REF_REGISTERS_BASE
-from gdb.gdb_utils import is_success_response
+from debug_adapter.common import VAR_REF_DYNAMIC_BASE, VAR_REF_LOCAL_BASE, VAR_REF_REGISTERS_BASE
+from debug_adapter.gdb.gdb_utils import is_success_response
 
 VAR_REF_NO_NESTING = 0
 

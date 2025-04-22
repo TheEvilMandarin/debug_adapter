@@ -12,14 +12,14 @@ import subprocess  # nosec B404 # noqa: S404
 from collections.abc import Iterator
 from functools import wraps
 
-from common import (
+from debug_adapter.common import (
     VAR_REF_LOCAL_BASE,
     VAR_REF_REGISTERS_BASE,
     CommandResult,
 )
-from dap.dap_message import DAPEvent, DAPResponse
-from dap.notifier import DAPNotifier, NullNotifier
-from gdb.backend import GDBBackend
+from debug_adapter.dap.dap_message import DAPEvent, DAPResponse
+from debug_adapter.dap.notifier import DAPNotifier, NullNotifier
+from debug_adapter.gdb.backend import GDBBackend
 
 ARGUMENTS = "arguments"
 THREAD_ID = "threadId"
