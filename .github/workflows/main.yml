@@ -1,7 +1,8 @@
-name: Poetry CI
+name: Poetry CI and Release
 
 on:
   push:
+    branches: [ main ]
   pull_request:
 
 jobs:
@@ -29,3 +30,43 @@ jobs:
       - name: Run `poe check`
         run: |
           poetry run poe check
+
+      - name: Build package
+        if: github.event_name == 'push'
+        run: |
+          poetry build
+
+      - name: Get base version from pyproject.toml
+        if: github.event_name == 'push'
+        id: get_base_version
+        run: |
+          BASE_VERSION=$(poetry version -s)
+          echo "BASE_VERSION=$BASE_VERSION" >> $GITHUB_ENV
+          echo "Base version is $BASE_VERSION"
+
+      - name: Calculate next patch version
+        if: github.event_name == 'push'
+        id: calculate_version
+        run: |
+          TAGS=$(git tag -l "v${BASE_VERSION}.*" || echo "")
+          if [ -z "$TAGS" ]; then
+            PATCH_VERSION=0
+          else
+            LAST_TAG=$(echo "$TAGS" | sort -V | tail -n 1)
+            LAST_PATCH=${LAST_TAG##*.}
+            PATCH_VERSION=$((LAST_PATCH + 1))
+          fi
+          FULL_VERSION="${BASE_VERSION}.${PATCH_VERSION}"
+          echo "FULL_VERSION=$FULL_VERSION" >> $GITHUB_ENV
+          echo "Calculated next full version: $FULL_VERSION"
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.FULL_VERSION }}
+          name: Release v${{ env.FULL_VERSION }}
+          files: |
+            dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
